@@ -3,6 +3,8 @@
   "version": "0.0.1",
   "private": true,
   "description": "LLM-based automated PR code review as a reusable GitHub Action, powered by the Claude API.",
+  "author": "Anna",
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=22"
