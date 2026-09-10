@@ -1,16 +1,19 @@
 #!/usr/bin/env node
+import Anthropic from '@anthropic-ai/sdk';
 import { Octokit } from '@octokit/rest';
+import { DEFAULT_MAX_INPUT_TOKENS, requestReview } from './claude/client.js';
+import { buildReviewPrompt } from './claude/prompt-builder.js';
 import { fetchPullRequestFiles, parsePullRequestRef } from './github/diff.js';
 import { classifyFiles } from './review/filter.js';
-import { buildReviewPrompt } from './claude/prompt-builder.js';
 import { emptyReviewConfig, loadReviewConfig } from './review/rules.js';
+import type { FileDiff, ReviewConfig } from './types/index.js';
 
 const DEFAULT_RULES_PATH = '.github/review-rules.yml';
 
 function printUsage(): void {
   console.log(
-    '사용법: npm run cli -- <PR_URL 또는 owner/repo#번호> ' +
-      '[--dry-run] [--print-prompt] [--ignore <glob>] [--rules-path <path>]',
+    '사용법: npm run cli -- <PR_URL 또는 owner/repo#번호> [--dry-run] [--print-prompt] ' +
+      '[--ignore <glob>] [--rules-path <path>] [--max-input-tokens <n>]',
   );
 }
 
@@ -21,6 +24,7 @@ interface ParsedArgs {
   ignoreGlobs: string[];
   rulesPath: string;
   rulesPathExplicit: boolean;
+  maxInputTokens: number;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -29,6 +33,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   let printPrompt = false;
   let rulesPath = DEFAULT_RULES_PATH;
   let rulesPathExplicit = false;
+  let maxInputTokens = DEFAULT_MAX_INPUT_TOKENS;
   const ignoreGlobs: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -46,6 +51,13 @@ function parseArgs(argv: string[]): ParsedArgs {
       if (!value) throw new Error('--rules-path 옵션에는 파일 경로가 필요합니다.');
       rulesPath = value;
       rulesPathExplicit = true;
+    } else if (arg === '--max-input-tokens') {
+      const value = argv[++i];
+      const parsed = value ? Number(value) : NaN;
+      if (!value || !Number.isInteger(parsed) || parsed <= 0) {
+        throw new Error('--max-input-tokens 옵션에는 양의 정수가 필요합니다.');
+      }
+      maxInputTokens = parsed;
     } else if (arg && !target && !arg.startsWith('--')) {
       target = arg;
     } else {
@@ -57,23 +69,45 @@ function parseArgs(argv: string[]): ParsedArgs {
     throw new Error('PR URL 또는 owner/repo#번호를 지정해야 합니다.');
   }
 
-  return { target, dryRun, printPrompt, ignoreGlobs, rulesPath, rulesPathExplicit };
+  return {
+    target,
+    dryRun,
+    printPrompt,
+    ignoreGlobs,
+    rulesPath,
+    rulesPathExplicit,
+    maxInputTokens,
+  };
 }
 
 function isEnoent(error: unknown): boolean {
   return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
 
+async function resolveReviewConfig(rulesPath: string, explicit: boolean): Promise<ReviewConfig> {
+  try {
+    return await loadReviewConfig(rulesPath);
+  } catch (error) {
+    if (!explicit && isEnoent(error)) {
+      console.log(`\n(${rulesPath} 없음 — 컨벤션 룰 없이 진행합니다)`);
+      return emptyReviewConfig();
+    }
+    throw error;
+  }
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const ref = parsePullRequestRef(args.target);
 
-  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
-  const octokit = new Octokit(token ? { auth: token } : {});
+  const githubToken = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+  const octokit = new Octokit(githubToken ? { auth: githubToken } : {});
 
   console.log(
     `PR 조회 중: ${ref.owner}/${ref.repo}#${ref.pullNumber}` +
-      (token ? '' : ' (인증 없음 — rate limit이 낮으니 큰 PR에서는 GITHUB_TOKEN을 설정하세요)'),
+      (githubToken
+        ? ''
+        : ' (인증 없음 — rate limit이 낮으니 큰 PR에서는 GITHUB_TOKEN을 설정하세요)'),
   );
 
   const files = await fetchPullRequestFiles(octokit, ref);
@@ -81,6 +115,7 @@ async function main(): Promise<void> {
 
   const included = decisions.filter((decision) => decision.included);
   const excluded = decisions.filter((decision) => !decision.included);
+  const includedFiles: FileDiff[] = included.map((decision) => decision.file);
 
   console.log(`\n리뷰 대상 파일 (${included.length}/${files.length}):`);
   for (const { file } of included) {
@@ -94,32 +129,45 @@ async function main(): Promise<void> {
     }
   }
 
-  if (args.printPrompt) {
-    let config;
-    try {
-      config = await loadReviewConfig(args.rulesPath);
-    } catch (error) {
-      if (!args.rulesPathExplicit && isEnoent(error)) {
-        console.log(`\n(${args.rulesPath} 없음 — 컨벤션 룰 없이 진행합니다)`);
-        config = emptyReviewConfig();
-      } else {
-        throw error;
-      }
+  if (args.dryRun) {
+    if (args.printPrompt) {
+      const config = await resolveReviewConfig(args.rulesPath, args.rulesPathExplicit);
+      const prompt = buildReviewPrompt(includedFiles, config);
+      console.log('\n=== SYSTEM PROMPT ===');
+      console.log(prompt.system);
+      console.log('\n=== USER MESSAGE ===');
+      console.log(prompt.user);
     }
+    console.log('\n(--dry-run) Claude API 호출 및 코멘트 게시는 생략합니다.');
+    return;
+  }
 
-    const prompt = buildReviewPrompt(
-      included.map((decision) => decision.file),
-      config,
-    );
+  const config = await resolveReviewConfig(args.rulesPath, args.rulesPathExplicit);
+  const prompt = buildReviewPrompt(includedFiles, config);
 
+  if (args.printPrompt) {
     console.log('\n=== SYSTEM PROMPT ===');
     console.log(prompt.system);
     console.log('\n=== USER MESSAGE ===');
     console.log(prompt.user);
   }
 
-  if (args.dryRun) {
-    console.log('\n(--dry-run) Claude API 호출 및 코멘트 게시는 아직 구현되지 않았습니다.');
+  console.log('\nClaude 호출 중...');
+  const client = new Anthropic();
+  const { result, usage } = await requestReview(client, prompt, {
+    maxInputTokens: args.maxInputTokens,
+  });
+
+  console.log('\n=== REVIEW RESULT ===');
+  console.log(JSON.stringify(result, null, 2));
+  console.log(
+    `\n(usage: input=${usage.inputTokens}, output=${usage.outputTokens}, ` +
+      `cache_write=${usage.cacheCreationInputTokens}, cache_read=${usage.cacheReadInputTokens})`,
+  );
+  if (usage.cacheReadInputTokens === 0 && usage.cacheCreationInputTokens === 0) {
+    console.log(
+      '(캐시가 전혀 안 걸렸습니다 — System 프롬프트가 최소 캐시 프리픽스보다 짧을 수 있습니다.)',
+    );
   }
 }
 
