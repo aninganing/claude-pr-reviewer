@@ -1,0 +1,39 @@
+{
+  "name": "claude-pr-reviewer",
+  "version": "0.0.1",
+  "private": true,
+  "description": "LLM-based automated PR code review as a reusable GitHub Action, powered by the Claude API.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src tests",
+    "format": "prettier --write .",
+    "cli": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.1",
+    "@actions/github": "^9.1.1",
+    "@anthropic-ai/sdk": "^0.71.0",
+    "@octokit/rest": "^22.0.0",
+    "js-yaml": "^4.1.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.10.5",
+    "@typescript-eslint/eslint-plugin": "^8.19.1",
+    "@typescript-eslint/parser": "^8.19.1",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

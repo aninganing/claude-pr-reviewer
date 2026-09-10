@@ -1,0 +1,30 @@
+name: 'Claude PR Reviewer'
+description: 'LLM 기반 자동 PR 코드 리뷰. 컨벤션 룰(.github/review-rules.yml)을 주입해 Claude API로 diff를 분석하고 결과를 PR 코멘트로 게시합니다.'
+author: 'Anna'
+branding:
+  icon: 'check-circle'
+  color: 'purple'
+
+inputs:
+  github-token:
+    description: 'PR 파일 조회 및 코멘트 게시에 사용할 토큰. 보통 ${{ secrets.GITHUB_TOKEN }}.'
+    required: true
+  anthropic-api-key:
+    description: 'Claude API 키. ${{ secrets.ANTHROPIC_API_KEY }}로 전달.'
+    required: true
+  rules-path:
+    description: '컨벤션 룰 YAML 파일 경로.'
+    required: false
+    default: '.github/review-rules.yml'
+  comment-style:
+    description: '리뷰 코멘트 게시 방식: inline | summary | both.'
+    required: false
+    default: 'both'
+
+outputs:
+  issue-count:
+    description: 'Claude가 보고한 이슈 개수.'
+
+runs:
+  using: 'node22'
+  main: 'lib/index.js'
