@@ -4,6 +4,8 @@ import { Octokit } from '@octokit/rest';
 import { DEFAULT_MAX_INPUT_TOKENS, requestReview } from './claude/client.js';
 import { buildReviewPrompt } from './claude/prompt-builder.js';
 import { fetchPullRequestFiles, parsePullRequestRef } from './github/diff.js';
+import { applyTokenBudget } from './review/budget.js';
+import { partitionIssuesByCommentability } from './review/diff-lines.js';
 import { classifyFiles } from './review/filter.js';
 import { emptyReviewConfig, loadReviewConfig } from './review/rules.js';
 import type { FileDiff, ReviewConfig } from './types/index.js';
@@ -115,10 +117,15 @@ async function main(): Promise<void> {
 
   const included = decisions.filter((decision) => decision.included);
   const excluded = decisions.filter((decision) => !decision.included);
-  const includedFiles: FileDiff[] = included.map((decision) => decision.file);
+  const reviewableFiles: FileDiff[] = included.map((decision) => decision.file);
 
-  console.log(`\n리뷰 대상 파일 (${included.length}/${files.length}):`);
-  for (const { file } of included) {
+  const { included: includedFiles, excluded: budgetExcludedFiles } = applyTokenBudget(
+    reviewableFiles,
+    args.maxInputTokens,
+  );
+
+  console.log(`\n리뷰 대상 파일 (${includedFiles.length}/${files.length}):`);
+  for (const file of includedFiles) {
     console.log(`  [${file.status}] +${file.additions}/-${file.deletions}  ${file.filename}`);
   }
 
@@ -126,6 +133,13 @@ async function main(): Promise<void> {
     console.log(`\n제외된 파일 (${excluded.length}):`);
     for (const { file, reason } of excluded) {
       console.log(`  ${file.filename} — ${reason}`);
+    }
+  }
+
+  if (budgetExcludedFiles.length > 0) {
+    console.log(`\n토큰 예산 초과로 제외된 파일 (${budgetExcludedFiles.length}):`);
+    for (const file of budgetExcludedFiles) {
+      console.log(`  ${file.filename}`);
     }
   }
 
@@ -158,8 +172,12 @@ async function main(): Promise<void> {
     maxInputTokens: args.maxInputTokens,
   });
 
+  const { inline, fallback } = partitionIssuesByCommentability(result.issues, includedFiles);
   console.log('\n=== REVIEW RESULT ===');
   console.log(JSON.stringify(result, null, 2));
+  console.log(
+    `\n(인라인 코멘트 가능: ${inline.length}개, hunk 범위 밖이라 요약으로 강등: ${fallback.length}개)`,
+  );
   console.log(
     `\n(usage: input=${usage.inputTokens}, output=${usage.outputTokens}, ` +
       `cache_write=${usage.cacheCreationInputTokens}, cache_read=${usage.cacheReadInputTokens})`,
