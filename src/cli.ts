@@ -2,30 +2,50 @@
 import { Octokit } from '@octokit/rest';
 import { fetchPullRequestFiles, parsePullRequestRef } from './github/diff.js';
 import { classifyFiles } from './review/filter.js';
+import { buildReviewPrompt } from './claude/prompt-builder.js';
+import { emptyReviewConfig, loadReviewConfig } from './review/rules.js';
+
+const DEFAULT_RULES_PATH = '.github/review-rules.yml';
 
 function printUsage(): void {
-  console.log('사용법: npm run cli -- <PR_URL 또는 owner/repo#번호> [--dry-run] [--ignore <glob>]');
+  console.log(
+    '사용법: npm run cli -- <PR_URL 또는 owner/repo#번호> ' +
+      '[--dry-run] [--print-prompt] [--ignore <glob>] [--rules-path <path>]',
+  );
 }
 
 interface ParsedArgs {
   target: string;
   dryRun: boolean;
+  printPrompt: boolean;
   ignoreGlobs: string[];
+  rulesPath: string;
+  rulesPathExplicit: boolean;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
   let target: string | undefined;
   let dryRun = false;
+  let printPrompt = false;
+  let rulesPath = DEFAULT_RULES_PATH;
+  let rulesPathExplicit = false;
   const ignoreGlobs: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--dry-run') {
       dryRun = true;
+    } else if (arg === '--print-prompt') {
+      printPrompt = true;
     } else if (arg === '--ignore') {
       const value = argv[++i];
       if (!value) throw new Error('--ignore 옵션에는 glob 패턴이 필요합니다.');
       ignoreGlobs.push(value);
+    } else if (arg === '--rules-path') {
+      const value = argv[++i];
+      if (!value) throw new Error('--rules-path 옵션에는 파일 경로가 필요합니다.');
+      rulesPath = value;
+      rulesPathExplicit = true;
     } else if (arg && !target && !arg.startsWith('--')) {
       target = arg;
     } else {
@@ -37,7 +57,11 @@ function parseArgs(argv: string[]): ParsedArgs {
     throw new Error('PR URL 또는 owner/repo#번호를 지정해야 합니다.');
   }
 
-  return { target, dryRun, ignoreGlobs };
+  return { target, dryRun, printPrompt, ignoreGlobs, rulesPath, rulesPathExplicit };
+}
+
+function isEnoent(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
 
 async function main(): Promise<void> {
@@ -68,6 +92,30 @@ async function main(): Promise<void> {
     for (const { file, reason } of excluded) {
       console.log(`  ${file.filename} — ${reason}`);
     }
+  }
+
+  if (args.printPrompt) {
+    let config;
+    try {
+      config = await loadReviewConfig(args.rulesPath);
+    } catch (error) {
+      if (!args.rulesPathExplicit && isEnoent(error)) {
+        console.log(`\n(${args.rulesPath} 없음 — 컨벤션 룰 없이 진행합니다)`);
+        config = emptyReviewConfig();
+      } else {
+        throw error;
+      }
+    }
+
+    const prompt = buildReviewPrompt(
+      included.map((decision) => decision.file),
+      config,
+    );
+
+    console.log('\n=== SYSTEM PROMPT ===');
+    console.log(prompt.system);
+    console.log('\n=== USER MESSAGE ===');
+    console.log(prompt.user);
   }
 
   if (args.dryRun) {

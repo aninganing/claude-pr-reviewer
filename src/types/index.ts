@@ -38,3 +38,11 @@ export interface ReviewResult {
   summary: string;
   issues: ReviewIssue[];
 }
+
+/** `.github/review-rules.yml`을 파싱한 결과. 프롬프트 조립과 코멘트 게시 방식을 결정한다. */
+export interface ReviewConfig {
+  language?: string;
+  commentStyle: 'inline' | 'summary' | 'both';
+  ignorePatterns: string[];
+  rules: ReviewRule[];
+}
