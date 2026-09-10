@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "lint": "eslint src tests",
     "format": "prettier --write .",
-    "cli": "tsx src/cli.ts"
+    "cli": "tsx src/cli.ts",
+    "package": "ncc build src/index.ts -o lib --license licenses.txt"
   },
   "dependencies": {
     "@actions/core": "^1.11.1",
@@ -30,6 +31,7 @@
     "@types/node": "^22.10.5",
     "@typescript-eslint/eslint-plugin": "^8.19.1",
     "@typescript-eslint/parser": "^8.19.1",
+    "@vercel/ncc": "^0.38.3",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^9.1.0",
     "globals": "^15.14.0",
