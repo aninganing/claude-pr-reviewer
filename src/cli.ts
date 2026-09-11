@@ -12,6 +12,7 @@ import type { FileDiff, ReviewConfig } from './types/index.js';
 
 const DEFAULT_RULES_PATH = '.github/review-rules.yml';
 
+// prints the CLI usage string to stdout
 function printUsage(): void {
   console.log(
     '사용법: npm run cli -- <PR_URL 또는 owner/repo#번호> [--dry-run] [--print-prompt] ' +
