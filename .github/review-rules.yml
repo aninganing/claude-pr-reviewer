@@ -1,0 +1,21 @@
+language: ko
+comment_style: both
+
+rules:
+  - id: korean-comments
+    description: '코드 주석과 JSDoc은 한글로 작성합니다. (변수/함수/타입 이름 등 식별자는 영어를 씁니다.)'
+    applies_to:
+      - 'src/**/*.ts'
+    severity: info
+
+  - id: review-module-boundary
+    description: 'src/review/ 아래 모듈은 GitHub API나 Claude API(@octokit, @anthropic-ai/sdk, @actions/*)에 직접 의존하면 안 됩니다. 순수 로직만 담아야 합니다.'
+    applies_to:
+      - 'src/review/**/*.ts'
+    severity: error
+
+  - id: no-explicit-optional-undefined
+    description: 'tsconfig의 exactOptionalPropertyTypes가 켜져 있으므로, optional 필드에 undefined를 명시적으로 대입하지 말고 조건부로 키 자체를 생략하세요.'
+    applies_to:
+      - 'src/**/*.ts'
+    severity: warning
