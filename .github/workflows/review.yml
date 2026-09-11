@@ -22,6 +22,12 @@ permissions:
 
 jobs:
   review:
+    # develop -> main은 release/sync 목적의 병합이라 리뷰하지 않는다. 각 기능 브랜치가
+    # develop으로 들어갈 때 이미 리뷰됐으므로 여기서 또 리뷰하면 중복이다.
+    if: |
+      !(github.event.pull_request.base.ref == 'main' &&
+        (github.event.pull_request.head.ref == 'develop' ||
+         github.event.pull_request.head.ref == 'dev'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (base ref only — PR head는 절대 checkout하지 않음)
