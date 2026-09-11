@@ -7,10 +7,10 @@ branding:
 
 inputs:
   github-token:
-    description: 'PR 파일 조회 및 코멘트 게시에 사용할 토큰. 보통 ${{ secrets.GITHUB_TOKEN }}.'
+    description: 'PR 파일 조회 및 코멘트 게시에 사용할 토큰. 보통 secrets.GITHUB_TOKEN 값을 전달하세요.'
     required: true
   anthropic-api-key:
-    description: 'Claude API 키. ${{ secrets.ANTHROPIC_API_KEY }}로 전달.'
+    description: 'Claude API 키. secrets.ANTHROPIC_API_KEY 값을 전달하세요.'
     required: true
   rules-path:
     description: '컨벤션 룰 YAML 파일 경로.'
@@ -26,5 +26,5 @@ outputs:
     description: 'Claude가 보고한 이슈 개수.'
 
 runs:
-  using: 'node22'
+  using: 'node24'
   main: 'lib/index.js'
