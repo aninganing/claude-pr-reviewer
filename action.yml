@@ -1,4 +1,4 @@
-name: 'Claude PR Reviewer'
+name: 'Aning Claude PR Reviewer'
 description: 'LLM 기반 자동 PR 코드 리뷰. 컨벤션 룰(.github/review-rules.yml)을 주입해 Claude API로 diff를 분석하고 결과를 PR 코멘트로 게시합니다.'
 author: 'Anna'
 branding:
