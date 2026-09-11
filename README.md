@@ -1,5 +1,7 @@
 # Claude PR Reviewer
 
+[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-Aning%20Claude%20PR%20Reviewer-blue?logo=github)](https://github.com/marketplace/actions/aning-claude-pr-reviewer)
+
 Claude API로 pull request의 diff를 자동 리뷰하고, 결과를 PR 코멘트로 남기는 GitHub Action입니다.
 
 기한이 촉박한 프로젝트에서는 코드 리뷰가 뒤로 밀리기 쉽고, 그 사이 컨벤션 불일치와 사소한 휴먼 에러가 누적됩니다. 이 프로젝트는 GitLab Webhook + API + Claude API 조합으로 사내에서 구현했던 자동 리뷰 시스템을, GitHub 생태계에서 별도 인프라 없이 바로 쓸 수 있는 형태(GitHub Action)로 다시 설계한 것입니다.
@@ -33,14 +35,33 @@ jobs:
 리포지토리 Settings → Secrets and variables → Actions에 `ANTHROPIC_API_KEY`를 등록해야 합니다.
 `GITHUB_TOKEN`은 GitHub Actions가 자동으로 제공합니다.
 
-> `@v1`은 태그 릴리스 후 기준입니다. 아직 릴리스 전이라면 커밋 SHA(`@<sha>`)나 브랜치 (`@develop`)로 고정해서 테스트하세요
-> — 브랜치 참조는 이후 변경될 수 있어 실제 배포에는 권장하지 않습니다.
+> `@v1`은 최신 v1.x 패치를 자동으로 따라가는 floating 태그입니다. 특정 버전에 고정하고 싶으면
+> `@v1.0.1`처럼 패치 버전까지 명시하세요.
+> [Releases](https://github.com/aninganing/claude-pr-reviewer/releases)에서 버전별 변경 내역을 확인할 수 있습니다.
 
 > **왜 `pull_request_target`인가**: fork에서 온 PR은 `pull_request` 이벤트에서 시크릿을 받지 못해 이 액션이 아예 동작하지 않습니다.
 > `pull_request_target`을 쓰면 fork PR도 리뷰할 수 있습니다.
 > 이 액션은 PR의 코드를 checkout하거나 실행하지 않고 GitHub API로 diff **텍스트**만 읽어 Claude 프롬프트에 넣을 뿐이라, 안전하게 이 이벤트를 쓸 수 있습니다 (자세한 근거는 [`.github/workflows/review.yml`](.github/workflows/review.yml)의 주석 참고).
 > 워크플로우를 수정할 때 `actions/checkout`에 `ref: ${{ github.event.pull_request.head.sha }}`를 추가해 PR의 코드를 직접 checkout/실행하지 않도록 주의하세요.
 > — 그 조합은 시크릿 유출로 이어질 수 있습니다.
+
+### 브랜치 → develop → main 흐름을 쓴다면
+
+기능 브랜치를 `develop`으로 먼저 병합하고 `develop`을 다시 `main`으로 병합하는 방식을 쓴다면, `develop → main` PR은 이미 각 기능 브랜치 PR에서 리뷰된 내용을 그대로 옮기는 것뿐이라 다시 리뷰할 필요가 없습니다. `jobs.<job_id>.if`로 이 경우만 건너뛸 수 있습니다:
+
+```yaml
+jobs:
+  review:
+    if: |
+      !(github.event.pull_request.base.ref == 'main' &&
+        (github.event.pull_request.head.ref == 'develop' ||
+         github.event.pull_request.head.ref == 'dev'))
+    runs-on: ubuntu-latest
+    steps:
+      # ...
+```
+
+이 리포 자신도 [`.github/workflows/review.yml`](.github/workflows/review.yml)에서 같은 방식을 씁니다.
 
 ## 입력 (inputs)
 
@@ -68,8 +89,7 @@ jobs:
 
 ## 컨벤션 룰 설정
 
-`.github/review-rules.yml`에 팀 컨벤션을 정의할 수 있습니다. 예시는
-[`examples/review-rules.example.yml`](examples/review-rules.example.yml)을 참고하세요.
+`.github/review-rules.yml`에 팀 컨벤션을 정의할 수 있습니다. 예시는 [`examples/review-rules.example.yml`](examples/review-rules.example.yml)을 참고하세요.
 
 ```yaml
 language: ko
